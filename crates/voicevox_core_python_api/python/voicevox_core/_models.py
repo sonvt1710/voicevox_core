@@ -1,6 +1,7 @@
 import dataclasses
 from enum import Enum
 from typing import List, NewType, Optional
+from uuid import UUID
 
 import pydantic
 
@@ -24,14 +25,30 @@ Parameters
 x : str
 """
 
-VoiceModelId = NewType("VoiceModelId", str)
+VoiceModelId = NewType("VoiceModelId", UUID)
 """
 音声モデルID。
 
 Parameters
 ----------
-x : str
+x : UUID
 """
+
+
+class StyleType(str, Enum):
+    """**スタイル** (_style_)に対応するモデルの種類。"""
+
+    TALK = "talk"
+    """音声合成クエリの作成と音声合成が可能。"""
+
+    SINGING_TEACHER = "singing_teacher"
+    """歌唱音声合成用のクエリの作成が可能。"""
+
+    FRAME_DECODE = "frame_decode"
+    """歌唱音声合成が可能。"""
+
+    SING = "sing"
+    """歌唱音声合成用のクエリの作成と歌唱音声合成が可能。"""
 
 
 @pydantic.dataclasses.dataclass
@@ -43,6 +60,16 @@ class StyleMeta:
 
     id: StyleId
     """スタイルID。"""
+
+    type: StyleType = dataclasses.field(default=StyleType.TALK)
+    """スタイルに対応するモデルの種類。"""
+
+    order: Optional[int] = None
+    """
+    話者の順番。
+
+    :attr:`SpeakerMeta.styles` は、この値に対して昇順に並んでいるべきである。
+    """
 
 
 @pydantic.dataclasses.dataclass
@@ -61,13 +88,20 @@ class SpeakerMeta:
     version: StyleVersion
     """話者のUUID。"""
 
+    order: Optional[int] = None
+    """
+    話者の順番。
+
+    ``SpeakerMeta`` の列は、この値に対して昇順に並んでいるべきである。
+    """
+
 
 @pydantic.dataclasses.dataclass
 class SupportedDevices:
     """
-    このライブラリで利用可能なデバイスの情報。
+    ONNX Runtimeとして利用可能なデバイスの情報。
 
-    あくまで本ライブラリが対応しているデバイスの情報であることに注意。GPUが使える環境ではなかったとしても
+    あくまでONNX Runtimeが対応しているデバイスの情報であることに注意。GPUが使える環境ではなかったとしても
     ``cuda`` や ``dml`` は ``True`` を示しうる。
     """
 
@@ -183,12 +217,18 @@ class AudioQuery:
     output_stereo: bool
     """音声データをステレオ出力するか否か。"""
 
+    pause_length: None = None
+    """句読点などの無音時間。 ``None`` のときは無視される。デフォルト値は ``None`` 。"""
+
+    pause_length_scale: float = 1.0
+    """読点などの無音時間（倍率）。デフォルト値は ``1.0`` 。"""
+
     kana: Optional[str] = None
     """
     [読み取り専用] AquesTalk風記法。
 
-    :func:`Synthesizer.audio_query` が返すもののみ ``str`` となる。入力としてのAudioQueryでは無視さ
-    れる。
+    :func:`Synthesizer.create_audio_query` が返すもののみ ``str`` となる。入力として
+    のAudioQueryでは無視される。
     """
 
 

@@ -1,6 +1,9 @@
 #![warn(rust_2018_idioms)]
 
+mod extract;
 mod inference_domain;
+mod inference_domains;
+mod python_api;
 
 use syn::parse_macro_input;
 
@@ -17,17 +20,18 @@ use syn::parse_macro_input;
 /// use enum_map::Enum;
 /// use macros::InferenceOperation;
 ///
-/// pub(crate) enum InferenceDomainImpl {}
+/// pub(crate) enum TalkDomain {}
 ///
-/// impl InferenceDomain for InferenceDomainImpl {
-///     type Operation = InferenceOperationImpl;
+/// impl InferenceDomain for TalkDomain {
+///     type Operation = TalkOperation;
+///     // ...
 /// }
 ///
 /// #[derive(Clone, Copy, Enum, InferenceOperation)]
 /// #[inference_operation(
-///     type Domain = InferenceDomainImpl;
+///     type Domain = TalkDomain;
 /// )]
-/// pub(crate) enum InferenceOperationImpl {
+/// pub(crate) enum TalkOperation {
 ///     #[inference_operation(
 ///         type Input = PredictDurationInput;
 ///         type Output = PredictDurationOutput;
@@ -97,6 +101,33 @@ pub fn derive_inference_output_signature(
 ) -> proc_macro::TokenStream {
     let input = &parse_macro_input!(input);
     from_syn(inference_domain::derive_inference_output_signature(input))
+}
+
+/// # Example
+///
+/// ```
+/// type ManifestDomains =
+///     (substitute_type!(Option<D::Manifest> where D = TalkDomain as InferenceDomain),);
+/// ```
+///
+/// ↓
+///
+/// ```
+/// type ManifestDomains = (Option<<TalkManifest as InferenceDomain>::Manifest>,);
+/// //                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// //                             T ← <TalkManifest as InferenceDomain>
+/// ```
+#[cfg(not(doctest))]
+#[proc_macro]
+pub fn substitute_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input);
+    from_syn(inference_domains::substitute_type(input))
+}
+
+#[proc_macro]
+pub fn pyproject_project_version(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input);
+    from_syn(python_api::pyproject_project_version(input))
 }
 
 fn from_syn(result: syn::Result<proc_macro2::TokenStream>) -> proc_macro::TokenStream {

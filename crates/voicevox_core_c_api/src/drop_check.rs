@@ -1,8 +1,12 @@
 use std::{
     collections::BTreeSet,
     ffi::{c_char, CStr, CString},
+    num::NonZero,
+    ptr::NonNull,
     sync::Mutex,
 };
+
+use easy_ext::ext;
 
 /// dropして良い`*mut c_char`を把握し、チェックする。
 ///
@@ -13,7 +17,7 @@ use std::{
 /// `CString`は`Box<impl Sized>`と同様Cの世界でもポインタ一つで実体を表すことができるため、こちら側
 /// で管理すべきものは本来無い。しかしながら本クレートが提供するAPIには「解放不要」な文字列を返すも
 /// のが含まれている。ユーザーが誤ってそのような文字列を解放するのは未定義動作 (undefined behavior)
-/// であるため、綺麗にSEGVするとも限らない。`once_cell::sync::Lazy`由来の文字列の場合、最悪解放が成
+/// であるため、綺麗にSEGVするとも限らない。`std::sync::LazyLock`由来の文字列の場合、最悪解放が成
 /// 功してしまう。
 ///
 /// この構造体はCの世界から帰ってきた`*mut c_char`を`CString`としてdropする際、それが本当にこちら側
@@ -26,8 +30,8 @@ pub(crate) static C_STRING_DROP_CHECKER: CStringDropChecker = CStringDropChecker
 pub(crate) struct CStringDropChecker(Mutex<Inner>);
 
 struct Inner {
-    owned_str_addrs: BTreeSet<usize>,
-    static_str_addrs: BTreeSet<usize>,
+    owned_str_addrs: BTreeSet<NonZero<usize>>,
+    static_str_addrs: BTreeSet<NonZero<usize>>,
 }
 
 impl CStringDropChecker {
@@ -46,8 +50,8 @@ impl CStringDropChecker {
             owned_str_addrs, ..
         } = &mut *self.0.lock().unwrap();
 
-        let ptr = s.as_ptr();
-        let duplicated = !owned_str_addrs.insert(ptr as usize);
+        let ptr = s.as_non_null_ptr();
+        let duplicated = !owned_str_addrs.insert(ptr.addr());
         if duplicated {
             panic!(
                 "別の{ptr:p}が管理下にあります。原因としては以前に別の文字列が{ptr:p}として存在\
@@ -69,7 +73,7 @@ impl CStringDropChecker {
             static_str_addrs, ..
         } = &mut *self.0.lock().unwrap();
 
-        static_str_addrs.insert(s.as_ptr() as usize);
+        static_str_addrs.insert(s.as_non_null_ptr().addr());
         s
     }
 
@@ -85,7 +89,7 @@ impl CStringDropChecker {
             ..
         } = &mut *self.0.lock().unwrap();
 
-        let addr = ptr as usize;
+        let addr = NonZero::new(ptr.addr()).expect("ヌルポインタは解放できません");
         if !owned_str_addrs.remove(&addr) {
             if static_str_addrs.contains(&addr) {
                 panic!(
@@ -103,11 +107,16 @@ impl CStringDropChecker {
     }
 }
 
+#[ext]
+impl CStr {
+    fn as_non_null_ptr(&self) -> NonNull<c_char> {
+        NonNull::new(self.as_ptr() as *mut c_char).expect("comes from a `CStr`")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::ffi::{c_char, CStr};
-
-    use cstr::cstr;
 
     use super::CStringDropChecker;
 
@@ -118,7 +127,7 @@ mod tests {
     )]
     fn it_denies_duplicated_char_ptr() {
         let checker = CStringDropChecker::new();
-        let s = cstr!("").to_owned();
+        let s = c"".to_owned();
         checker.whitelist(checker.whitelist(s));
     }
 
@@ -128,7 +137,7 @@ mod tests {
     )]
     fn it_denies_unknown_char_ptr() {
         let checker = CStringDropChecker::new();
-        let s = CStr::from_bytes_with_nul(b"\0").unwrap().to_owned();
+        let s = c"".to_owned();
         checker.check(s.into_raw());
     }
 
@@ -141,6 +150,6 @@ mod tests {
         checker.blacklist(STATIC);
         checker.check(STATIC.as_ptr() as *mut c_char);
 
-        static STATIC: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"\0") };
+        static STATIC: &CStr = c"";
     }
 }

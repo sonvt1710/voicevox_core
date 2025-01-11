@@ -1,42 +1,43 @@
-use derive_getters::Getters;
-use derive_new::new;
-use serde::{Deserialize, Serialize};
+use std::fmt;
+
+use duplicate::duplicate_item;
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
 /* 各フィールドのjsonフィールド名はsnake_caseとする*/
 
 /// モーラ（子音＋母音）ごとの情報。
-#[derive(Clone, Debug, new, Getters, Deserialize, Serialize)]
-pub struct MoraModel {
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Mora {
     /// 文字。
-    text: String,
+    pub text: String,
     /// 子音の音素。
-    consonant: Option<String>,
+    pub consonant: Option<String>,
     /// 子音の音長。
-    consonant_length: Option<f32>,
+    pub consonant_length: Option<f32>,
     /// 母音の音素。
-    vowel: String,
+    pub vowel: String,
     /// 母音の音長。
-    vowel_length: f32,
+    pub vowel_length: f32,
     /// 音高。
-    pitch: f32,
+    pub pitch: f32,
 }
 
 /// AccentPhrase (アクセント句ごとの情報)。
-#[derive(Clone, Debug, new, Getters, Deserialize, Serialize)]
-pub struct AccentPhraseModel {
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct AccentPhrase {
     /// モーラの配列。
-    moras: Vec<MoraModel>,
+    pub moras: Vec<Mora>,
     /// アクセント箇所。
-    accent: usize,
+    pub accent: usize,
     /// 後ろに無音を付けるかどうか。
-    pause_mora: Option<MoraModel>,
+    pub pause_mora: Option<Mora>,
     /// 疑問系かどうか。
     #[serde(default)]
-    is_interrogative: bool,
+    pub is_interrogative: bool,
 }
 
-impl AccentPhraseModel {
-    pub(super) fn set_pause_mora(&mut self, pause_mora: Option<MoraModel>) {
+impl AccentPhrase {
+    pub(super) fn set_pause_mora(&mut self, pause_mora: Option<Mora>) {
         self.pause_mora = pause_mora;
     }
 
@@ -46,37 +47,132 @@ impl AccentPhraseModel {
 }
 
 /// AudioQuery (音声合成用のクエリ)。
-#[allow(clippy::too_many_arguments)]
-#[derive(Clone, new, Getters, Deserialize, Serialize)]
-pub struct AudioQueryModel {
+#[derive(Clone, Deserialize, Serialize)]
+pub struct AudioQuery {
     /// アクセント句の配列。
-    accent_phrases: Vec<AccentPhraseModel>,
+    pub accent_phrases: Vec<AccentPhrase>,
     /// 全体の話速。
-    speed_scale: f32,
+    pub speed_scale: f32,
     /// 全体の音高。
-    pitch_scale: f32,
+    pub pitch_scale: f32,
     /// 全体の抑揚。
-    intonation_scale: f32,
+    pub intonation_scale: f32,
     /// 全体の音量。
-    volume_scale: f32,
+    pub volume_scale: f32,
     /// 音声の前の無音時間。
-    pre_phoneme_length: f32,
+    pub pre_phoneme_length: f32,
     /// 音声の後の無音時間。
-    post_phoneme_length: f32,
+    pub post_phoneme_length: f32,
     /// 音声データの出力サンプリングレート。
-    output_sampling_rate: u32,
+    pub output_sampling_rate: u32,
     /// 音声データをステレオ出力するか否か。
-    output_stereo: bool,
+    pub output_stereo: bool,
+    // TODO: VOICEVOX/voicevox_engine#1308 を実装する
+    /// 句読点などの無音時間。`null`のときは無視される。デフォルト値は`null`。
+    #[serde(
+        default,
+        deserialize_with = "deserialize_pause_length",
+        serialize_with = "serialize_pause_length"
+    )]
+    pub pause_length: (),
+    /// 読点などの無音時間（倍率）。デフォルト値は`1`。
+    #[serde(
+        default,
+        deserialize_with = "deserialize_pause_length_scale",
+        serialize_with = "serialize_pause_length_scale"
+    )]
+    pub pause_length_scale: (),
     /// \[読み取り専用\] AquesTalk風記法。
     ///
-    /// [`Synthesizer::audio_query`]が返すもののみ`Some`となる。入力としてのAudioQueryでは無視され
+    /// [`Synthesizer::create_audio_query`]が返すもののみ`Some`となる。入力としてのAudioQueryでは無視され
     /// る。
     ///
-    /// [`Synthesizer::audio_query`]: crate::Synthesizer::audio_query
-    kana: Option<String>,
+    /// [`Synthesizer::create_audio_query`]: crate::blocking::Synthesizer::create_audio_query
+    pub kana: Option<String>,
 }
 
-impl AudioQueryModel {
+fn deserialize_pause_length<'de, D>(deserializer: D) -> Result<(), D::Error>
+where
+    D: Deserializer<'de>,
+{
+    return deserializer.deserialize_any(Visitor);
+
+    struct Visitor;
+
+    impl de::Visitor<'_> for Visitor {
+        type Value = ();
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("`null`")
+        }
+
+        #[duplicate_item(
+            method        T;
+            [ visit_i64 ] [ i64 ];
+            [ visit_u64 ] [ u64 ];
+            [ visit_f64 ] [ f64 ];
+        )]
+        fn method<E>(self, _: T) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Err(E::custom("currently `pause_length` must be `null`"))
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E> {
+            Ok(())
+        }
+    }
+}
+
+fn serialize_pause_length<S>(_: &(), serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_unit()
+}
+
+fn deserialize_pause_length_scale<'de, D>(deserializer: D) -> Result<(), D::Error>
+where
+    D: Deserializer<'de>,
+{
+    return deserializer.deserialize_any(Visitor);
+
+    struct Visitor;
+
+    impl de::Visitor<'_> for Visitor {
+        type Value = ();
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("`1.`")
+        }
+
+        #[duplicate_item(
+            method        T       ONE;
+            [ visit_i64 ] [ i64 ] [ 1 ];
+            [ visit_u64 ] [ u64 ] [ 1 ];
+            [ visit_f64 ] [ f64 ] [ 1. ];
+        )]
+        fn method<E>(self, v: T) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            if v != ONE {
+                return Err(E::custom("currently `pause_length_scale` must be `1.`"));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn serialize_pause_length_scale<S>(_: &(), serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    (1.).serialize(serializer)
+}
+
+impl AudioQuery {
     pub(crate) fn with_kana(self, kana: Option<String>) -> Self {
         Self { kana, ..self }
     }
@@ -84,15 +180,28 @@ impl AudioQueryModel {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::*;
     use pretty_assertions::assert_eq;
+    use rstest::rstest;
     use serde_json::json;
+
+    use super::AudioQuery;
 
     #[rstest]
     fn check_audio_query_model_json_field_snake_case() {
-        let audio_query_model =
-            AudioQueryModel::new(vec![], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, false, None);
+        let audio_query_model = AudioQuery {
+            accent_phrases: vec![],
+            speed_scale: 0.0,
+            pitch_scale: 0.0,
+            intonation_scale: 0.0,
+            volume_scale: 0.0,
+            pre_phoneme_length: 0.0,
+            post_phoneme_length: 0.0,
+            output_sampling_rate: 0,
+            output_stereo: false,
+            pause_length: (),
+            pause_length_scale: (),
+            kana: None,
+        };
         let val = serde_json::to_value(audio_query_model).unwrap();
         check_json_field_snake_case(&val);
     }
@@ -119,7 +228,7 @@ mod tests {
 
     #[rstest]
     fn it_accepts_json_without_optional_fields() -> anyhow::Result<()> {
-        serde_json::from_value::<AudioQueryModel>(json!({
+        serde_json::from_value::<AudioQuery>(json!({
             "accent_phrases": [
                 {
                     "moras": [
@@ -143,5 +252,43 @@ mod tests {
             "output_stereo": false
         }))?;
         Ok(())
+    }
+
+    // TODO: 型的に自明になったらこのテストは削除する
+    #[rstest]
+    fn it_denies_non_null_for_pause_length() {
+        serde_json::from_value::<AudioQuery>(json!({
+            "accent_phrases": [],
+            "speed_scale": 1.0,
+            "pitch_scale": 0.0,
+            "intonation_scale": 1.0,
+            "volume_scale": 1.0,
+            "pre_phoneme_length": 0.1,
+            "post_phoneme_length": 0.1,
+            "output_sampling_rate": 24000,
+            "output_stereo": false,
+            "pause_length": "aaaaa"
+        }))
+        .map(|_| ())
+        .unwrap_err();
+    }
+
+    // TODO: 型的に自明になったらこのテストは削除する
+    #[rstest]
+    fn it_denies_non_float_for_pause_length_scale() {
+        serde_json::from_value::<AudioQuery>(json!({
+            "accent_phrases": [],
+            "speed_scale": 1.0,
+            "pitch_scale": 0.0,
+            "intonation_scale": 1.0,
+            "volume_scale": 1.0,
+            "pre_phoneme_length": 0.1,
+            "post_phoneme_length": 0.1,
+            "output_sampling_rate": 24000,
+            "output_stereo": false,
+            "pause_length_scale": "aaaaa",
+        }))
+        .map(|_| ())
+        .unwrap_err();
     }
 }

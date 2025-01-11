@@ -1,20 +1,21 @@
 use jni::objects::JClass;
 use std::{borrow::Cow, sync::Arc};
 
-use crate::common::{throw_if_err, JavaApiError, RUNTIME};
+use crate::common::{throw_if_err, JavaApiError};
 use jni::{
     objects::{JObject, JString},
     sys::jobject,
     JNIEnv,
 };
 
-#[no_mangle]
-unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsNew<'local>(
+// SAFETY: voicevox_core_java_apiを構成するライブラリの中に、これと同名のシンボルは存在しない
+#[unsafe(no_mangle)]
+unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_blocking_UserDict_rsNew<'local>(
     env: JNIEnv<'local>,
     this: JObject<'local>,
 ) {
     throw_if_err(env, (), |env| {
-        let internal = voicevox_core::UserDict::new();
+        let internal = voicevox_core::blocking::UserDict::new();
 
         env.set_rust_field(&this, "handle", Arc::new(internal))?;
 
@@ -22,15 +23,16 @@ unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsNew<'local>(
     })
 }
 
-#[no_mangle]
-unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsAddWord<'local>(
+// SAFETY: voicevox_core_java_apiを構成するライブラリの中に、これと同名のシンボルは存在しない
+#[unsafe(no_mangle)]
+unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_blocking_UserDict_rsAddWord<'local>(
     env: JNIEnv<'local>,
     this: JObject<'local>,
     word_json: JString<'local>,
 ) -> jobject {
     throw_if_err(env, std::ptr::null_mut(), |env| {
         let internal = env
-            .get_rust_field::<_, _, Arc<voicevox_core::UserDict>>(&this, "handle")?
+            .get_rust_field::<_, _, Arc<voicevox_core::blocking::UserDict>>(&this, "handle")?
             .clone();
 
         let word_json = env.get_string(&word_json)?;
@@ -46,8 +48,9 @@ unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsAddWord<'loc
     })
 }
 
-#[no_mangle]
-unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsUpdateWord<'local>(
+// SAFETY: voicevox_core_java_apiを構成するライブラリの中に、これと同名のシンボルは存在しない
+#[unsafe(no_mangle)]
+unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_blocking_UserDict_rsUpdateWord<'local>(
     env: JNIEnv<'local>,
     this: JObject<'local>,
     uuid: JString<'local>,
@@ -55,7 +58,7 @@ unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsUpdateWord<'
 ) {
     throw_if_err(env, (), |env| {
         let internal = env
-            .get_rust_field::<_, _, Arc<voicevox_core::UserDict>>(&this, "handle")?
+            .get_rust_field::<_, _, Arc<voicevox_core::blocking::UserDict>>(&this, "handle")?
             .clone();
 
         let uuid = env.get_string(&uuid)?;
@@ -72,15 +75,16 @@ unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsUpdateWord<'
     })
 }
 
-#[no_mangle]
-unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsRemoveWord<'local>(
+// SAFETY: voicevox_core_java_apiを構成するライブラリの中に、これと同名のシンボルは存在しない
+#[unsafe(no_mangle)]
+unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_blocking_UserDict_rsRemoveWord<'local>(
     env: JNIEnv<'local>,
     this: JObject<'local>,
     uuid: JString<'local>,
 ) {
     throw_if_err(env, (), |env| {
         let internal = env
-            .get_rust_field::<_, _, Arc<voicevox_core::UserDict>>(&this, "handle")?
+            .get_rust_field::<_, _, Arc<voicevox_core::blocking::UserDict>>(&this, "handle")?
             .clone();
 
         let uuid = env.get_string(&uuid)?;
@@ -92,18 +96,19 @@ unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsRemoveWord<'
     })
 }
 
-#[no_mangle]
-unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsImportDict<'local>(
+// SAFETY: voicevox_core_java_apiを構成するライブラリの中に、これと同名のシンボルは存在しない
+#[unsafe(no_mangle)]
+unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_blocking_UserDict_rsImportDict<'local>(
     env: JNIEnv<'local>,
     this: JObject<'local>,
     other_dict: JObject<'local>,
 ) {
     throw_if_err(env, (), |env| {
         let internal = env
-            .get_rust_field::<_, _, Arc<voicevox_core::UserDict>>(&this, "handle")?
+            .get_rust_field::<_, _, Arc<voicevox_core::blocking::UserDict>>(&this, "handle")?
             .clone();
         let other_dict = env
-            .get_rust_field::<_, _, Arc<voicevox_core::UserDict>>(&other_dict, "handle")?
+            .get_rust_field::<_, _, Arc<voicevox_core::blocking::UserDict>>(&other_dict, "handle")?
             .clone();
 
         internal.import(&other_dict)?;
@@ -112,54 +117,57 @@ unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsImportDict<'
     })
 }
 
-#[no_mangle]
-unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsLoad<'local>(
+// SAFETY: voicevox_core_java_apiを構成するライブラリの中に、これと同名のシンボルは存在しない
+#[unsafe(no_mangle)]
+unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_blocking_UserDict_rsLoad<'local>(
     env: JNIEnv<'local>,
     this: JObject<'local>,
     path: JString<'local>,
 ) {
     throw_if_err(env, (), |env| {
         let internal = env
-            .get_rust_field::<_, _, Arc<voicevox_core::UserDict>>(&this, "handle")?
+            .get_rust_field::<_, _, Arc<voicevox_core::blocking::UserDict>>(&this, "handle")?
             .clone();
 
         let path = env.get_string(&path)?;
-        let path = &Cow::from(&path);
+        let path = &*Cow::from(&path);
 
-        RUNTIME.block_on(internal.load(path))?;
+        internal.load(path)?;
 
         Ok(())
     })
 }
 
-#[no_mangle]
-unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsSave<'local>(
+// SAFETY: voicevox_core_java_apiを構成するライブラリの中に、これと同名のシンボルは存在しない
+#[unsafe(no_mangle)]
+unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_blocking_UserDict_rsSave<'local>(
     env: JNIEnv<'local>,
     this: JObject<'local>,
     path: JString<'local>,
 ) {
     throw_if_err(env, (), |env| {
         let internal = env
-            .get_rust_field::<_, _, Arc<voicevox_core::UserDict>>(&this, "handle")?
+            .get_rust_field::<_, _, Arc<voicevox_core::blocking::UserDict>>(&this, "handle")?
             .clone();
 
         let path = env.get_string(&path)?;
-        let path = &Cow::from(&path);
+        let path = &*Cow::from(&path);
 
-        RUNTIME.block_on(internal.save(path))?;
+        internal.save(path)?;
 
         Ok(())
     })
 }
 
-#[no_mangle]
-unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsGetWords<'local>(
+// SAFETY: voicevox_core_java_apiを構成するライブラリの中に、これと同名のシンボルは存在しない
+#[unsafe(no_mangle)]
+unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_blocking_UserDict_rsGetWords<'local>(
     env: JNIEnv<'local>,
     this: JObject<'local>,
 ) -> jobject {
     throw_if_err(env, std::ptr::null_mut(), |env| {
         let internal = env
-            .get_rust_field::<_, _, Arc<voicevox_core::UserDict>>(&this, "handle")?
+            .get_rust_field::<_, _, Arc<voicevox_core::blocking::UserDict>>(&this, "handle")?
             .clone();
 
         let words = internal.to_json();
@@ -169,8 +177,9 @@ unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsGetWords<'lo
     })
 }
 
-#[no_mangle]
-unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsDrop<'local>(
+// SAFETY: voicevox_core_java_apiを構成するライブラリの中に、これと同名のシンボルは存在しない
+#[unsafe(no_mangle)]
+unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_blocking_UserDict_rsDrop<'local>(
     env: JNIEnv<'local>,
     this: JObject<'local>,
 ) {
@@ -180,8 +189,9 @@ unsafe extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsDrop<'local>
     })
 }
 
-#[no_mangle]
-extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsToZenkaku<'local>(
+// SAFETY: voicevox_core_java_apiを構成するライブラリの中に、これと同名のシンボルは存在しない
+#[unsafe(no_mangle)]
+extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDictWord_rsToZenkaku<'local>(
     env: JNIEnv<'local>,
     _cls: JClass<'local>,
     text: JString<'local>,
@@ -197,8 +207,9 @@ extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsToZenkaku<'local>(
     })
 }
 
-#[no_mangle]
-extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDict_rsValidatePronunciation<'local>(
+// SAFETY: voicevox_core_java_apiを構成するライブラリの中に、これと同名のシンボルは存在しない
+#[unsafe(no_mangle)]
+extern "system" fn Java_jp_hiroshiba_voicevoxcore_UserDictWord_rsValidatePronunciation<'local>(
     env: JNIEnv<'local>,
     _cls: JClass<'local>,
     text: JString<'local>,

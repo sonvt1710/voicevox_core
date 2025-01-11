@@ -1,25 +1,23 @@
-use std::{error::Error as _, fmt::Debug, iter};
-use voicevox_core::UserDictWord;
+use easy_ext::ext;
+use std::{ffi::CStr, fmt::Debug, iter};
+use uuid::Uuid;
+use voicevox_core::{AccelerationMode, AudioQuery, UserDictWord, VoiceModelId};
 
 use thiserror::Error;
 use tracing::error;
 
-use super::*;
-use voicevox_core::AccentPhraseModel;
+use voicevox_core::AccentPhrase;
+
+use crate::{
+    result_code::VoicevoxResultCode, VoicevoxAccelerationMode, VoicevoxInitializeOptions,
+    VoicevoxSynthesisOptions, VoicevoxTtsOptions, VoicevoxUserDictWord, VoicevoxUserDictWordType,
+};
 
 pub(crate) fn into_result_code_with_error(result: CApiResult<()>) -> VoicevoxResultCode {
     if let Err(err) = &result {
         display_error(err);
     }
     return into_result_code(result);
-
-    fn display_error(err: &CApiError) {
-        itertools::chain(
-            [err.to_string()],
-            iter::successors(err.source(), |&e| e.source()).map(|e| format!("Caused by: {e}")),
-        )
-        .for_each(|msg| error!("{msg}"));
-    }
 
     fn into_result_code(result: CApiResult<()>) -> VoicevoxResultCode {
         use voicevox_core::ErrorKind::*;
@@ -31,15 +29,17 @@ pub(crate) fn into_result_code_with_error(result: CApiResult<()>) -> VoicevoxRes
             Err(RustApi(err)) => match err.kind() {
                 NotLoadedOpenjtalkDict => VOICEVOX_RESULT_NOT_LOADED_OPENJTALK_DICT_ERROR,
                 GpuSupport => VOICEVOX_RESULT_GPU_SUPPORT_ERROR,
+                InitInferenceRuntime => VOICEVOX_RESULT_INIT_INFERENCE_RUNTIME_ERROR,
                 OpenZipFile => VOICEVOX_RESULT_OPEN_ZIP_FILE_ERROR,
                 ReadZipEntry => VOICEVOX_RESULT_READ_ZIP_ENTRY_ERROR,
+                InvalidModelFormat => VOICEVOX_RESULT_INVALID_MODEL_HEADER_ERROR,
                 ModelAlreadyLoaded => VOICEVOX_RESULT_MODEL_ALREADY_LOADED_ERROR,
                 StyleAlreadyLoaded => VOICEVOX_RESULT_STYLE_ALREADY_LOADED_ERROR,
                 InvalidModelData => VOICEVOX_RESULT_INVALID_MODEL_DATA_ERROR,
                 GetSupportedDevices => VOICEVOX_RESULT_GET_SUPPORTED_DEVICES_ERROR,
                 StyleNotFound => VOICEVOX_RESULT_STYLE_NOT_FOUND_ERROR,
                 ModelNotFound => VOICEVOX_RESULT_MODEL_NOT_FOUND_ERROR,
-                InferenceFailed => VOICEVOX_RESULT_INFERENCE_ERROR,
+                RunModel => VOICEVOX_RESULT_RUN_MODEL_ERROR,
                 ExtractFullContextLabel => VOICEVOX_RESULT_EXTRACT_FULL_CONTEXT_LABEL_ERROR,
                 ParseKana => VOICEVOX_RESULT_PARSE_KANA_ERROR,
                 LoadUserDict => VOICEVOX_RESULT_LOAD_USER_DICT_ERROR,
@@ -56,10 +56,18 @@ pub(crate) fn into_result_code_with_error(result: CApiResult<()>) -> VoicevoxRes
     }
 }
 
+pub(crate) fn display_error(err: &impl std::error::Error) {
+    itertools::chain(
+        [err.to_string()],
+        iter::successors(err.source(), |&e| e.source()).map(|e| format!("Caused by: {e}")),
+    )
+    .for_each(|msg| error!("{msg}"));
+}
+
 pub(crate) type CApiResult<T> = std::result::Result<T, CApiError>;
 
 #[derive(Error, Debug)]
-pub enum CApiError {
+pub(crate) enum CApiError {
     #[error("{0}")]
     RustApi(#[from] voicevox_core::Error),
     #[error("UTF-8として不正な入力です")]
@@ -72,24 +80,16 @@ pub enum CApiError {
     InvalidUuid(uuid::Error),
 }
 
-pub(crate) fn audio_query_model_to_json(audio_query_model: &AudioQueryModel) -> String {
+pub(crate) fn audio_query_model_to_json(audio_query_model: &AudioQuery) -> String {
     serde_json::to_string(audio_query_model).expect("should be always valid")
 }
 
-pub(crate) fn accent_phrases_to_json(audio_query_model: &[AccentPhraseModel]) -> String {
+pub(crate) fn accent_phrases_to_json(audio_query_model: &[AccentPhrase]) -> String {
     serde_json::to_string(audio_query_model).expect("should be always valid")
 }
 
 pub(crate) fn ensure_utf8(s: &CStr) -> CApiResult<&str> {
     s.to_str().map_err(|_| CApiError::InvalidUtf8Input)
-}
-
-impl From<VoicevoxSynthesisOptions> for voicevox_core::SynthesisOptions {
-    fn from(options: VoicevoxSynthesisOptions) -> Self {
-        Self {
-            enable_interrogative_upspeak: options.enable_interrogative_upspeak,
-        }
-    }
 }
 
 impl From<voicevox_core::AccelerationMode> for VoicevoxAccelerationMode {
@@ -116,45 +116,35 @@ impl From<VoicevoxAccelerationMode> for voicevox_core::AccelerationMode {
 
 impl Default for VoicevoxInitializeOptions {
     fn default() -> Self {
-        let options = voicevox_core::InitializeOptions::default();
         Self {
-            acceleration_mode: options.acceleration_mode.into(),
-            cpu_num_threads: options.cpu_num_threads,
-        }
-    }
-}
-
-impl From<VoicevoxInitializeOptions> for voicevox_core::InitializeOptions {
-    fn from(value: VoicevoxInitializeOptions) -> Self {
-        voicevox_core::InitializeOptions {
-            acceleration_mode: value.acceleration_mode.into(),
-            cpu_num_threads: value.cpu_num_threads,
-        }
-    }
-}
-
-impl From<voicevox_core::TtsOptions> for VoicevoxTtsOptions {
-    fn from(options: voicevox_core::TtsOptions) -> Self {
-        Self {
-            enable_interrogative_upspeak: options.enable_interrogative_upspeak,
-        }
-    }
-}
-
-impl From<VoicevoxTtsOptions> for voicevox_core::TtsOptions {
-    fn from(options: VoicevoxTtsOptions) -> Self {
-        Self {
-            enable_interrogative_upspeak: options.enable_interrogative_upspeak,
+            acceleration_mode: AccelerationMode::default().into(),
+            cpu_num_threads: voicevox_core::__internal::interop::DEFAULT_CPU_NUM_THREADS,
         }
     }
 }
 
 impl Default for VoicevoxSynthesisOptions {
     fn default() -> Self {
-        let options = voicevox_core::TtsOptions::default();
         Self {
-            enable_interrogative_upspeak: options.enable_interrogative_upspeak,
+            enable_interrogative_upspeak:
+                voicevox_core::__internal::interop::DEFAULT_ENABLE_INTERROGATIVE_UPSPEAK,
         }
+    }
+}
+
+impl Default for VoicevoxTtsOptions {
+    fn default() -> Self {
+        Self {
+            enable_interrogative_upspeak:
+                voicevox_core::__internal::interop::DEFAULT_ENABLE_INTERROGATIVE_UPSPEAK,
+        }
+    }
+}
+
+#[ext(UuidBytesExt)]
+pub(crate) impl uuid::Bytes {
+    fn to_model_id(self) -> VoiceModelId {
+        Uuid::from_bytes(self).into()
     }
 }
 

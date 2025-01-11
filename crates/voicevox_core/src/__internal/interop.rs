@@ -1,1 +1,9 @@
-pub use crate::synthesizer::PerformInference;
+pub mod raii;
+
+pub use crate::{
+    metas::merge as merge_metas,
+    synthesizer::{
+        blocking::PerformInference, DEFAULT_CPU_NUM_THREADS, DEFAULT_ENABLE_INTERROGATIVE_UPSPEAK,
+        MARGIN,
+    },
+};

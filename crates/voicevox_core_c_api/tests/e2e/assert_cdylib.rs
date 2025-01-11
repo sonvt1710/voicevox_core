@@ -8,6 +8,7 @@ use assert_cmd::assert::{Assert, AssertResult, OutputAssertExt as _};
 use clap::Parser as _;
 use duct::cmd;
 use easy_ext::ext;
+use itertools::Itertools as _;
 use libloading::Library;
 use libtest_mimic::{Failed, Trial};
 
@@ -36,7 +37,7 @@ pub(crate) fn exec<C: TestContext>() -> anyhow::Result<()> {
         let exec_c_api_e2e_test = serde_json::from_str::<Box<dyn TestCase>>(&exec_c_api_e2e_test)?;
 
         return unsafe {
-            let lib = &Library::new(C::cdylib_path())?;
+            let lib = Library::new(C::cdylib_path())?;
             exec_c_api_e2e_test.exec(lib)
         };
     }
@@ -46,11 +47,15 @@ pub(crate) fn exec<C: TestContext>() -> anyhow::Result<()> {
     // テスト対象が無いときに`cargo build`をスキップしたいが、判定部分がプライベート。
     // そのためスキップするのはCLIオプションに`--ignored`か`--include-ignored`が無いときのみ
     if args.ignored || args.include_ignored {
-        let mut cmd = cmd!(env!("CARGO"), "build", "--release", "--lib");
-        for (k, v) in C::BUILD_ENVS {
-            cmd = cmd.env(k, v);
-        }
-        cmd.run()?;
+        cmd!(
+            env!("CARGO"),
+            "build",
+            "--release",
+            "--lib",
+            "--features",
+            &format!(",{}", C::FEATURES.iter().format(",")),
+        )
+        .run()?;
 
         ensure!(
             C::cdylib_path().exists(),
@@ -100,9 +105,9 @@ pub(crate) fn exec<C: TestContext>() -> anyhow::Result<()> {
 }
 
 pub(crate) trait TestContext {
+    const FEATURES: &'static [&'static str];
     const TARGET_DIR: &'static str;
     const CDYLIB_NAME: &'static str;
-    const BUILD_ENVS: &'static [(&'static str, &'static str)];
     const RUNTIME_ENVS: &'static [(&'static str, &'static str)];
 }
 
@@ -113,9 +118,10 @@ pub(crate) trait TestCase: Send {
     ///
     /// `exec`は独立したプロセスで実行されるため、stdout/stderrへの出力をしたりグローバルな状態に
     /// 依存してもよい。
-    unsafe fn exec(&self, lib: &Library) -> anyhow::Result<()>;
+    unsafe fn exec(&self, lib: Library) -> anyhow::Result<()>;
 
     /// 別プロセスで実行された`exec`の結果をチェックする。
+    #[expect(clippy::result_large_err, reason = "多分assert_cmdの責務")]
     fn assert_output(&self, output: Utf8Output) -> AssertResult;
 }
 

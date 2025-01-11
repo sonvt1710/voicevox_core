@@ -35,10 +35,9 @@ gradle.ext {
   version = cargoTomlVersion
 
   targetOs = targetOs
-  targetDevice = System.getenv('DEVICE') ?: 'cpu'
 
   gsonVersion = '2.10.1'
   jakartaValidationVersion = '3.0.2'
   jakartaAnnotationVersion = '2.1.1'
-  onnxruntimeVersion = '1.14.0'
+  onnxruntimeVersion = '1.17.3'
 }

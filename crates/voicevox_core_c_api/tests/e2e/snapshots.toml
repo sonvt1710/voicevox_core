@@ -6,47 +6,105 @@ metas = '''
     "styles": [
       {
         "id": 0,
-        "name": "style1"
+        "name": "style1",
+        "type": "talk",
+        "order": null
       }
     ],
     "version": "0.0.1",
-    "speaker_uuid": "574bc678-8370-44be-b941-08e46e7b47d7"
+    "speaker_uuid": "574bc678-8370-44be-b941-08e46e7b47d7",
+    "order": null
   },
   {
     "name": "dummy2",
     "styles": [
       {
         "id": 1,
-        "name": "style2"
+        "name": "style2",
+        "type": "talk",
+        "order": null
       }
     ],
     "version": "0.0.1",
-    "speaker_uuid": "dd9ccd75-75f6-40ce-a3db-960cbed2e905"
+    "speaker_uuid": "dd9ccd75-75f6-40ce-a3db-960cbed2e905",
+    "order": null
   },
   {
     "name": "dummy3",
     "styles": [
       {
         "id": 302,
-        "name": "style3-1"
+        "name": "style3-1",
+        "type": "talk",
+        "order": null
       },
       {
         "id": 303,
-        "name": "style3-2"
+        "name": "style3-2",
+        "type": "talk",
+        "order": null
       }
     ],
     "version": "0.0.1",
-    "speaker_uuid": "5d3d9aa9-88e5-4a96-8ef7-f13a3cad1cb3"
+    "speaker_uuid": "5d3d9aa9-88e5-4a96-8ef7-f13a3cad1cb3",
+    "order": null
+  },
+  {
+    "name": "dummy4",
+    "styles": [
+      {
+        "id": 3000,
+        "name": "style4-1",
+        "type": "frame_decode",
+        "order": null
+      },
+      {
+        "id": 6000,
+        "name": "style4-2",
+        "type": "singing_teacher",
+        "order": null
+      }
+    ],
+    "version": "0.0.1",
+    "speaker_uuid": "32478dc2-4c8b-44f7-b041-c836e0df6d56",
+    "order": null
   }
 ]'''
 stderr.windows = '''
 {windows-video-cards}
+{timestamp}  INFO voicevox_core::synthesizer: CPUを利用します
 '''
-stderr.unix = ""
+stderr.unix = '''
+{timestamp}  INFO voicevox_core::synthesizer: CPUを利用します
+'''
 
 [compatible_engine_load_model_before_initialize]
 last_error_message = "Statusが初期化されていません"
 stderr = ""
+
+[double_delete_openjtalk]
+stderr_matches_all = [
+    '\n`OpenJtalkRc` \(0x[0-9a-f]{16}\)は既に破棄されています\n',
+    "\nthread caused non-unwinding panic. aborting.\n",
+]
+
+[double_delete_synthesizer]
+stderr_matches_all = [
+    '\n`VoicevoxSynthesizer` \(0x[0-9a-f]{16}\)は既に破棄されています\n',
+    "\nthread caused non-unwinding panic. aborting.\n",
+]
+
+[double_delete_user_dict]
+stderr_matches_all = [
+    '\n`VoicevoxUserDict` \(0x[0-9a-f]{16}\)は既に破棄されています\n',
+    "\nthread caused non-unwinding panic. aborting.\n",
+]
+
+[double_delete_voice_model_file]
+stderr_matches_all = [
+    '\n`VoicevoxVoiceModelFile` \(0x[0-9a-f]{16}\)は既に破棄されています\n',
+    "\nthread caused non-unwinding panic. aborting.\n",
+]
 
 [global_info]
 result_messages.0 = "エラーが発生しませんでした"
@@ -72,14 +130,19 @@ result_messages.22 = "ユーザー辞書に単語が見つかりませんでし�
 result_messages.23 = "OpenJTalkのユーザー辞書の設定に失敗しました"
 result_messages.24 = "ユーザー辞書の単語のバリデーションに失敗しました"
 result_messages.25 = "UUIDの変換に失敗しました"
-stderr = ""
+result_messages.28 = "モデルの形式が不正です"
+result_messages.29 = "推論ライブラリのロードまたは初期化ができませんでした"
+stderr = ''
 
 [simple_tts]
 output."こんにちは、音声合成の世界へようこそ".wav_length = 176172
 stderr.windows = '''
 {windows-video-cards}
+{timestamp}  INFO voicevox_core::synthesizer: CPUを利用します
 '''
-stderr.unix = ""
+stderr.unix = '''
+{timestamp}  INFO voicevox_core::synthesizer: CPUを利用します
+'''
 
 [synthesizer_new_output_json]
 metas = '''
@@ -89,56 +152,96 @@ metas = '''
     "styles": [
       {
         "id": 0,
-        "name": "style1"
+        "name": "style1",
+        "type": "talk",
+        "order": null
       }
     ],
     "version": "0.0.1",
-    "speaker_uuid": "574bc678-8370-44be-b941-08e46e7b47d7"
+    "speaker_uuid": "574bc678-8370-44be-b941-08e46e7b47d7",
+    "order": null
   },
   {
     "name": "dummy2",
     "styles": [
       {
         "id": 1,
-        "name": "style2"
+        "name": "style2",
+        "type": "talk",
+        "order": null
       }
     ],
     "version": "0.0.1",
-    "speaker_uuid": "dd9ccd75-75f6-40ce-a3db-960cbed2e905"
+    "speaker_uuid": "dd9ccd75-75f6-40ce-a3db-960cbed2e905",
+    "order": null
   },
   {
     "name": "dummy3",
     "styles": [
       {
         "id": 302,
-        "name": "style3-1"
+        "name": "style3-1",
+        "type": "talk",
+        "order": null
       },
       {
         "id": 303,
-        "name": "style3-2"
+        "name": "style3-2",
+        "type": "talk",
+        "order": null
       }
     ],
     "version": "0.0.1",
-    "speaker_uuid": "5d3d9aa9-88e5-4a96-8ef7-f13a3cad1cb3"
+    "speaker_uuid": "5d3d9aa9-88e5-4a96-8ef7-f13a3cad1cb3",
+    "order": null
+  },
+  {
+    "name": "dummy4",
+    "styles": [
+      {
+        "id": 3000,
+        "name": "style4-1",
+        "type": "frame_decode",
+        "order": null
+      },
+      {
+        "id": 6000,
+        "name": "style4-2",
+        "type": "singing_teacher",
+        "order": null
+      }
+    ],
+    "version": "0.0.1",
+    "speaker_uuid": "32478dc2-4c8b-44f7-b041-c836e0df6d56",
+    "order": null
   }
 ]'''
 stderr.windows = '''
 {windows-video-cards}
+{timestamp}  INFO voicevox_core::synthesizer: CPUを利用します
 '''
-stderr.unix = ""
+stderr.unix = '''
+{timestamp}  INFO voicevox_core::synthesizer: CPUを利用します
+'''
 
 [tts_via_audio_query]
 output."こんにちは、音声合成の世界へようこそ".wav_length = 176172
 stderr.windows = '''
 {windows-video-cards}
+{timestamp}  INFO voicevox_core::synthesizer: CPUを利用します
 '''
-stderr.unix = ""
+stderr.unix = '''
+{timestamp}  INFO voicevox_core::synthesizer: CPUを利用します
+'''
 
-[user_dict]
+[user_dict_load]
 stderr.windows = '''
 {windows-video-cards}
+{timestamp}  INFO voicevox_core::synthesizer: CPUを利用します
 '''
-stderr.unix = ""
+stderr.unix = '''
+{timestamp}  INFO voicevox_core::synthesizer: CPUを利用します
+'''
 
 [user_dict_manipulate]
 stderr = ""

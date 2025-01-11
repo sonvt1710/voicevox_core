@@ -1,9 +1,9 @@
-pub(crate) mod domain;
+pub(crate) mod domains;
 mod model_file;
 pub(crate) mod runtimes;
-pub(crate) mod status;
+pub(crate) mod session_set;
 
-use std::{borrow::Cow, fmt::Debug};
+use std::{borrow::Cow, collections::BTreeSet, fmt::Debug, ops::Index, sync::Arc};
 
 use derive_new::new;
 use duplicate::duplicate_item;
@@ -11,16 +11,57 @@ use enum_map::{Enum, EnumMap};
 use ndarray::{Array, ArrayD, Dimension, ShapeError};
 use thiserror::Error;
 
-use crate::SupportedDevices;
+use crate::{
+    asyncs::{Async, BlockingThreadPool, SingleTasked},
+    devices::{DeviceSpec, GpuSpec},
+    StyleType, SupportedDevices,
+};
+
+pub(crate) trait AsyncExt: Async {
+    async fn run_session<R: InferenceRuntime>(
+        ctx: R::RunContext,
+    ) -> anyhow::Result<Vec<OutputTensor>>;
+}
+
+impl AsyncExt for SingleTasked {
+    async fn run_session<R: InferenceRuntime>(
+        ctx: R::RunContext,
+    ) -> anyhow::Result<Vec<OutputTensor>> {
+        R::run_blocking(ctx)
+    }
+}
+
+impl AsyncExt for BlockingThreadPool {
+    async fn run_session<R: InferenceRuntime>(
+        ctx: R::RunContext,
+    ) -> anyhow::Result<Vec<OutputTensor>> {
+        R::run_async(ctx).await
+    }
+}
 
 pub(crate) trait InferenceRuntime: 'static {
-    type Session: Sized + Send + 'static;
-    type RunContext<'a>: From<&'a mut Self::Session> + PushInputTensor;
+    // TODO: "session"とは何なのかを定め、ドキュメントを書く。`InferenceSessionSet`も同様。
+    type Session;
 
-    fn supported_devices() -> crate::Result<SupportedDevices>;
+    // 本当は`From<&'_ Self::Session>`としたいが、 rust-lang/rust#100013 が立ち塞がる
+    type RunContext: From<Arc<Self::Session>> + PushInputTensor;
 
-    #[allow(clippy::type_complexity)]
+    /// 名前。
+    const DISPLAY_NAME: &'static str;
+
+    /// このランタイムで利用可能なデバイスの情報を取得する。
+    fn supported_devices(&self) -> crate::Result<SupportedDevices>;
+
+    /// GPUが実際に利用できそうかどうか判定する。
+    fn test_gpu(&self, gpu: GpuSpec) -> anyhow::Result<()>;
+
+    #[expect(
+        clippy::type_complexity,
+        reason = "ここを呼び出すのは現状一箇所なので、可読性が著しく落ちてはいないことを考えると\
+                  別にこのままでいいはず"
+    )]
     fn new_session(
+        &self,
         model: impl FnOnce() -> std::result::Result<Vec<u8>, DecryptModelError>,
         options: InferenceSessionOptions,
     ) -> anyhow::Result<(
@@ -29,12 +70,23 @@ pub(crate) trait InferenceRuntime: 'static {
         Vec<ParamInfo<OutputScalarKind>>,
     )>;
 
-    fn run(ctx: Self::RunContext<'_>) -> anyhow::Result<Vec<OutputTensor>>;
+    fn run_blocking(ctx: Self::RunContext) -> anyhow::Result<Vec<OutputTensor>>;
+
+    async fn run_async(ctx: Self::RunContext) -> anyhow::Result<Vec<OutputTensor>>;
 }
 
-/// ある`VoiceModel`が提供する推論操作の集合を示す。
-pub(crate) trait InferenceDomain {
+/// 共に扱われるべき推論操作の集合を示す。
+pub(crate) trait InferenceDomain: Sized {
     type Operation: InferenceOperation;
+    type Manifest: Index<Self::Operation, Output = Arc<str>>;
+
+    /// 対応する`StyleType`。
+    ///
+    /// 複数の`InferenceDomain`に対応する`StyleType`があってもよい。
+    ///
+    /// また、どの`InferenceDomain`にも属さない`StyleType`があってもよい。そのような`StyleType`は
+    /// 音声モデルのロード時に単に拒否されるべきである。
+    fn style_types() -> &'static BTreeSet<StyleType>;
 }
 
 /// `InferenceDomain`の推論操作を表す列挙型。
@@ -44,7 +96,11 @@ pub(crate) trait InferenceDomain {
 /// `::macros::InferenceOperation`により導出される。
 pub(crate) trait InferenceOperation: Copy + Enum {
     /// `{InferenceInputSignature,InferenceOutputSignature}::PARAM_INFOS`を集めたもの。
-    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::type_complexity,
+        reason = "ここを参照するのは現状一箇所なので、可読性が著しく落ちてはいないことを考えると\
+                  別にこのままでいいはず"
+    )]
     const PARAM_INFOS: EnumMap<
         Self,
         (
@@ -57,7 +113,7 @@ pub(crate) trait InferenceOperation: Copy + Enum {
 /// `InferenceDomain`の推論操作を表す列挙型。
 ///
 /// `::macros::InferenceOperation`により、具体型ごと生成される。
-pub(crate) trait InferenceSignature: Sized + Send + 'static {
+pub(crate) trait InferenceSignature {
     type Domain: InferenceDomain;
     type Input: InferenceInputSignature<Signature = Self>;
     type Output: InferenceOutputSignature;
@@ -67,19 +123,24 @@ pub(crate) trait InferenceSignature: Sized + Send + 'static {
 /// 推論操作の入力シグネチャ。
 ///
 /// `::macros::InferenceInputSignature`により導出される。
-pub(crate) trait InferenceInputSignature: Send + 'static {
+pub(crate) trait InferenceInputSignature {
     type Signature: InferenceSignature<Input = Self>;
     const PARAM_INFOS: &'static [ParamInfo<InputScalarKind>];
-    fn make_run_context<R: InferenceRuntime>(self, sess: &mut R::Session) -> R::RunContext<'_>;
+    fn make_run_context<R: InferenceRuntime>(
+        self,
+        sess: Arc<R::Session>,
+    ) -> anyhow::Result<R::RunContext>;
 }
 
 pub(crate) trait InputScalar: Sized {
     const KIND: InputScalarKind;
 
+    // TODO: `Array`ではなく`ArrayView`を取ることができるかもしれない
     fn push_tensor_to_ctx(
+        name: &'static str,
         tensor: Array<Self, impl Dimension + 'static>,
         visitor: &mut impl PushInputTensor,
-    );
+    ) -> anyhow::Result<()>;
 }
 
 #[duplicate_item(
@@ -91,32 +152,42 @@ impl InputScalar for T {
     const KIND: InputScalarKind = KIND_VAL;
 
     fn push_tensor_to_ctx(
+        name: &'static str,
         tensor: Array<Self, impl Dimension + 'static>,
         ctx: &mut impl PushInputTensor,
-    ) {
-        ctx.push(tensor);
+    ) -> anyhow::Result<()> {
+        ctx.push(name, tensor)
     }
 }
 
 #[derive(Clone, Copy, PartialEq, derive_more::Display)]
 pub(crate) enum InputScalarKind {
-    #[display(fmt = "int64_t")]
+    #[display("int64_t")]
     Int64,
 
-    #[display(fmt = "float")]
+    #[display("float")]
     Float32,
 }
 
 pub(crate) trait PushInputTensor {
-    fn push_int64(&mut self, tensor: Array<i64, impl Dimension + 'static>);
-    fn push_float32(&mut self, tensor: Array<f32, impl Dimension + 'static>);
+    fn push_int64(
+        &mut self,
+        name: &'static str,
+        tensor: Array<i64, impl Dimension + 'static>,
+    ) -> anyhow::Result<()>;
+
+    fn push_float32(
+        &mut self,
+        name: &'static str,
+        tensor: Array<f32, impl Dimension + 'static>,
+    ) -> anyhow::Result<()>;
 }
 
 /// 推論操作の出力シグネチャ。
 ///
 /// `::macros::InferenceOutputSignature`により、`TryFrom<OutputTensor>`も含めて導出される。
 pub(crate) trait InferenceOutputSignature:
-    TryFrom<Vec<OutputTensor>, Error = anyhow::Error> + Send
+    TryFrom<Vec<OutputTensor>, Error = anyhow::Error>
 {
     const PARAM_INFOS: &'static [ParamInfo<OutputScalarKind>];
 }
@@ -126,23 +197,33 @@ pub(crate) trait OutputScalar: Sized {
     fn extract(tensor: OutputTensor) -> std::result::Result<ArrayD<Self>, ExtractError>;
 }
 
-impl OutputScalar for f32 {
-    const KIND: OutputScalarKind = OutputScalarKind::Float32;
+#[duplicate_item(
+    T        Kind;
+    [ i64 ] [ Int64 ];
+    [ f32 ] [ Float32 ];
+)]
+impl OutputScalar for T {
+    const KIND: OutputScalarKind = OutputScalarKind::Kind;
 
     fn extract(tensor: OutputTensor) -> std::result::Result<ArrayD<Self>, ExtractError> {
         match tensor {
-            OutputTensor::Float32(tensor) => Ok(tensor),
+            OutputTensor::Kind(tensor) => Ok(tensor),
+            _ => Err(ExtractError::Datatype),
         }
     }
 }
 
 #[derive(Clone, Copy, PartialEq, derive_more::Display)]
 pub(crate) enum OutputScalarKind {
-    #[display(fmt = "float")]
+    #[display("int64_t")]
+    Int64,
+
+    #[display("float")]
     Float32,
 }
 
 pub(crate) enum OutputTensor {
+    Int64(ArrayD<i64>),
     Float32(ArrayD<f32>),
 }
 
@@ -172,11 +253,15 @@ impl<D: PartialEq> ParamInfo<D> {
 #[derive(new, Clone, Copy, PartialEq, Debug)]
 pub(crate) struct InferenceSessionOptions {
     pub(crate) cpu_num_threads: u16,
-    pub(crate) use_gpu: bool,
+    pub(crate) device: DeviceSpec,
 }
 
+// TODO: `ShapeError`を直接扱い、データ型違いはパニックにすべきでは？
 #[derive(Error, Debug)]
 pub(crate) enum ExtractError {
+    #[error("wrong datatype")]
+    Datatype,
+
     #[error(transparent)]
     Shape(#[from] ShapeError),
 }

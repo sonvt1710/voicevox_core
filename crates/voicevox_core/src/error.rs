@@ -1,8 +1,13 @@
-use self::engine::{FullContextLabelError, KanaParseError};
-use super::*;
+use crate::{
+    devices::DeviceAvailabilities,
+    engine::{FullContextLabelError, KanaParseError},
+    user_dict::InvalidWordError,
+    StyleId, StyleType, VoiceModelId,
+};
 //use engine::
 use duplicate::duplicate_item;
-use std::path::PathBuf;
+use itertools::Itertools as _;
+use std::{collections::BTreeSet, path::PathBuf};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -29,18 +34,20 @@ impl Error {
     pub fn kind(&self) -> ErrorKind {
         match &self.0 {
             ErrorRepr::NotLoadedOpenjtalkDict => ErrorKind::NotLoadedOpenjtalkDict,
-            ErrorRepr::GpuSupport => ErrorKind::GpuSupport,
+            ErrorRepr::GpuSupport(_) => ErrorKind::GpuSupport,
+            ErrorRepr::InitInferenceRuntime { .. } => ErrorKind::InitInferenceRuntime,
             ErrorRepr::LoadModel(LoadModelError { context, .. }) => match context {
                 LoadModelErrorKind::OpenZipFile => ErrorKind::OpenZipFile,
                 LoadModelErrorKind::ReadZipEntry { .. } => ErrorKind::ReadZipEntry,
                 LoadModelErrorKind::ModelAlreadyLoaded { .. } => ErrorKind::ModelAlreadyLoaded,
                 LoadModelErrorKind::StyleAlreadyLoaded { .. } => ErrorKind::StyleAlreadyLoaded,
+                LoadModelErrorKind::InvalidModelFormat { .. } => ErrorKind::InvalidModelFormat,
                 LoadModelErrorKind::InvalidModelData => ErrorKind::InvalidModelData,
             },
             ErrorRepr::GetSupportedDevices(_) => ErrorKind::GetSupportedDevices,
             ErrorRepr::StyleNotFound { .. } => ErrorKind::StyleNotFound,
             ErrorRepr::ModelNotFound { .. } => ErrorKind::ModelNotFound,
-            ErrorRepr::InferenceFailed { .. } => ErrorKind::InferenceFailed,
+            ErrorRepr::RunModel { .. } => ErrorKind::RunModel,
             ErrorRepr::ExtractFullContextLabel(_) => ErrorKind::ExtractFullContextLabel,
             ErrorRepr::ParseKana(_) => ErrorKind::ParseKana,
             ErrorRepr::LoadUserDict(_) => ErrorKind::LoadUserDict,
@@ -57,8 +64,15 @@ pub(crate) enum ErrorRepr {
     #[error("OpenJTalkの辞書が読み込まれていません")]
     NotLoadedOpenjtalkDict,
 
-    #[error("GPU機能をサポートすることができません")]
-    GpuSupport,
+    #[error("GPU機能をサポートすることができません:\n{_0}")]
+    GpuSupport(DeviceAvailabilities),
+
+    #[error("{runtime_display_name}のロードまたは初期化ができませんでした")]
+    InitInferenceRuntime {
+        runtime_display_name: &'static str,
+        #[source]
+        source: anyhow::Error,
+    },
 
     #[error(transparent)]
     LoadModel(#[from] LoadModelError),
@@ -67,10 +81,14 @@ pub(crate) enum ErrorRepr {
     GetSupportedDevices(#[source] anyhow::Error),
 
     #[error(
-        "`{style_id}`に対するスタイルが見つかりませんでした。音声モデルが読み込まれていないか、読\
-         み込みが解除されています"
+        "`{style_id}` ([{style_types}])に対するスタイルが見つかりませんでした。音声モデルが\
+         読み込まれていないか、読み込みが解除されています",
+        style_types = style_types.iter().format(", ")
     )]
-    StyleNotFound { style_id: StyleId },
+    StyleNotFound {
+        style_id: StyleId,
+        style_types: &'static BTreeSet<StyleType>,
+    },
 
     #[error(
         "`{model_id}`に対する音声モデルが見つかりませんでした。読み込まれていないか、読み込みが既\
@@ -79,7 +97,7 @@ pub(crate) enum ErrorRepr {
     ModelNotFound { model_id: VoiceModelId },
 
     #[error("推論に失敗しました")]
-    InferenceFailed(#[source] anyhow::Error),
+    RunModel(#[source] anyhow::Error),
 
     #[error(transparent)]
     ExtractFullContextLabel(#[from] FullContextLabelError),
@@ -110,10 +128,14 @@ pub enum ErrorKind {
     NotLoadedOpenjtalkDict,
     /// GPUモードがサポートされていない。
     GpuSupport,
+    /// 推論ライブラリのロードまたは初期化ができなかった。
+    InitInferenceRuntime,
     /// ZIPファイルを開くことに失敗した。
     OpenZipFile,
     /// ZIP内のファイルが読めなかった。
     ReadZipEntry,
+    /// モデルの形式が不正。
+    InvalidModelFormat,
     /// すでに読み込まれている音声モデルを読み込もうとした。
     ModelAlreadyLoaded,
     /// すでに読み込まれているスタイルを読み込もうとした。
@@ -127,7 +149,7 @@ pub enum ErrorKind {
     /// 音声モデルIDに対する音声モデルが見つからなかった。
     ModelNotFound,
     /// 推論に失敗した。
-    InferenceFailed,
+    RunModel,
     /// コンテキストラベル出力に失敗した。
     ExtractFullContextLabel,
     /// AquesTalk風記法のテキストの解析に失敗した。
@@ -158,14 +180,16 @@ pub(crate) struct LoadModelError {
 
 #[derive(derive_more::Display, Debug)]
 pub(crate) enum LoadModelErrorKind {
-    #[display(fmt = "ZIPファイルとして開くことができませんでした")]
+    #[display("ZIPファイルとして開くことができませんでした")]
     OpenZipFile,
-    #[display(fmt = "`{filename}`を読み取れませんでした")]
+    #[display("`{filename}`を読み取れませんでした")]
     ReadZipEntry { filename: String },
-    #[display(fmt = "モデル`{id}`は既に読み込まれています")]
+    #[display("モデルの形式が不正です")]
+    InvalidModelFormat,
+    #[display("モデル`{id}`は既に読み込まれています")]
     ModelAlreadyLoaded { id: VoiceModelId },
-    #[display(fmt = "スタイル`{id}`は既に読み込まれています")]
+    #[display("スタイル`{id}`は既に読み込まれています")]
     StyleAlreadyLoaded { id: StyleId },
-    #[display(fmt = "モデルデータを読むことができませんでした")]
+    #[display("モデルデータを読むことができませんでした")]
     InvalidModelData,
 }

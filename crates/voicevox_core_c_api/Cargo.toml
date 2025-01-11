@@ -3,6 +3,8 @@ name = "voicevox_core_c_api"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+rust-version.workspace = true
+license.workspace = true
 
 [lib]
 crate-type = ["cdylib"]
@@ -13,23 +15,28 @@ harness = false
 name = "e2e"
 
 [features]
-directml = ["voicevox_core/directml"]
+load-onnxruntime = ["voicevox_core/load-onnxruntime"]
+link-onnxruntime = ["voicevox_core/link-onnxruntime"]
 
 [dependencies]
 anstream = { workspace = true, default-features = false, features = ["auto"] }
 anstyle-query.workspace = true
+boxcar.workspace = true
+camino.workspace = true
 chrono = { workspace = true, default-features = false, features = ["clock"] }
 colorchoice.workspace = true
-cstr.workspace = true
-derive-getters.workspace = true
-futures.workspace = true
+const_format.workspace = true
+duplicate.workspace = true
+easy-ext.workspace = true
+educe.workspace = true
 itertools.workspace = true
 libc.workspace = true
-once_cell.workspace = true
+ndarray.workspace = true
+parking_lot = { workspace = true, features = ["arc_lock"] }
 process_path.workspace = true
+ref-cast.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 uuid.workspace = true
@@ -42,18 +49,20 @@ clap = { workspace = true, features = ["derive"] }
 duct.workspace = true
 easy-ext.workspace = true
 inventory.workspace = true
+indexmap = { workspace = true, features = ["serde"] }
 libloading.workspace = true
 libtest-mimic.workspace = true
 ndarray.workspace = true
 ndarray-stats.workspace = true
+predicates.workspace = true
 regex.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_with.workspace = true
-strum = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
 test_util.workspace = true
 toml.workspace = true
 typetag.workspace = true
+voicevox-ort.workspace = true
 
 [lints.rust]
 unsafe_code = "allow" # C APIのための操作

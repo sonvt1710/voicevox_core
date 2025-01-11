@@ -1,12 +1,16 @@
 package jp.hiroshiba.voicevoxcore;
 
-import com.google.gson.Gson;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 import jakarta.annotation.Nonnull;
+import jp.hiroshiba.voicevoxcore.internal.Dll;
 
 /** VOICEVOX CORE自体の情報。 */
-public class GlobalInfo extends Dll {
+public class GlobalInfo {
+  static {
+    Dll.loadLibrary();
+  }
+
   /**
    * ライブラリのバージョン。
    *
@@ -17,33 +21,19 @@ public class GlobalInfo extends Dll {
     return rsGetVersion();
   }
 
-  /**
-   * このライブラリで利用可能なデバイスの情報を取得する。
-   *
-   * @return {@link SupportedDevices}。
-   */
-  @Nonnull
-  public static SupportedDevices getSupportedDevices() {
-    Gson gson = new Gson();
-    String supportedDevicesJson = rsGetSupportedDevicesJson();
-    SupportedDevices supportedDevices = gson.fromJson(supportedDevicesJson, SupportedDevices.class);
-    if (supportedDevices == null) {
-      throw new NullPointerException("supported_devices");
-    }
-    return supportedDevices;
-  }
-
   @Nonnull
   private static native String rsGetVersion();
 
+  // FIXME: dead code
   @Nonnull
   private static native String rsGetSupportedDevicesJson();
 
+  // FIXME: `Onnxruntime`に移すか、独立させる
   /**
-   * このライブラリで利用可能なデバイスの情報。
+   * ONNX Runtime利用可能なデバイスの情報。
    *
-   * <p>あくまで本ライブラリが対応しているデバイスの情報であることに注意。GPUが使える環境ではなかったとしても {@link #cuda} や {@link #dml} は {@code
-   * true} を示しうる。
+   * <p>あくまでONNX Runtimeが対応しているデバイスの情報であることに注意。GPUが使える環境ではなかったとしても {@link #cuda} や {@link #dml} は
+   * {@code true} を示しうる。
    */
   public static class SupportedDevices {
     /**
